@@ -37,12 +37,32 @@ class RCAReport(BaseModel):
 
 
 def build_agent_input(incident: dict[str, object]) -> dict[str, object]:
-    """Copy only the approved evidence fields, excluding identifiers and labels."""
-    return {
-        key: incident[key]
-        for key in ("timestamp", "request", "dependency", "window_summary")
-        if key in incident
+    """Copy only known telemetry scalar fields, excluding nested metadata."""
+    fields = {
+        "request": ("status_code", "duration_ms"),
+        "dependency": ("name", "duration_ms", "success"),
+        "window_summary": ("total_requests", "failed_requests", "p95_latency_ms"),
     }
+    payload: dict[str, object] = {}
+    if "timestamp" in incident and _is_scalar(incident["timestamp"]):
+        payload["timestamp"] = incident["timestamp"]
+    for section, allowed in fields.items():
+        if section not in incident:
+            continue
+        value = incident[section]
+        if isinstance(value, dict):
+            payload[section] = {
+                key: value[key] for key in allowed
+                if key in value and _is_scalar(value[key])
+            }
+        elif value is None:
+            payload[section] = None
+    return payload
+
+
+def _is_scalar(value: object) -> bool:
+    """Prevent containers from hiding metadata under approved scalar fields."""
+    return value is None or isinstance(value, (str, int, float, bool))
 
 
 def _evidence_tokens(value: object, path: str = "") -> set[str]:
@@ -54,7 +74,7 @@ def _evidence_tokens(value: object, path: str = "") -> set[str]:
     elif isinstance(value, list):
         for index, child in enumerate(value):
             tokens.update(_evidence_tokens(child, f"{path}[{index}]"))
-    elif value is None or isinstance(value, (str, int, float, bool)):
+    elif _is_scalar(value):
         tokens.add(f"{path}={json.dumps(value, allow_nan=False)}")
     return tokens
 

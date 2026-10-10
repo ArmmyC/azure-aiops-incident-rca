@@ -76,8 +76,8 @@ uv run --group rca python -m rca.analyze
 Agent creation is versioned: every explicit creator invocation creates a new
 version. **Do not run creation per incident.** The analyzer calls the existing
 named agent once and prints only validated JSON; inference may incur Foundry
-usage charges. Operation IDs, ground-truth labels, and unknown top-level
-metadata are excluded from model input. Evidence must use exact `path=value`
+usage charges. Operation IDs, ground-truth labels, and unknown metadata at
+every level are excluded from model input. Evidence must use exact `path=value`
 tokens with JSON scalar values, such as `dependency.success=false` and
 `dependency.name="search_service"`. Unsupported tokens and malformed responses
 are rejected. A 404 with no named dependency must yield `insufficient_evidence`

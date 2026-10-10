@@ -94,6 +94,49 @@ def test_agent_input_excludes_labels_and_operation_id():
     assert build_agent_input({"request": {"status_code": 504}}) == {"request": {"status_code": 504}}
 
 
+@pytest.mark.parametrize("section", ["request", "dependency", "window_summary"])
+def test_agent_input_excludes_nested_metadata_from_outgoing_request(section):
+    incident = incident_data()
+    incident[section].update({
+        "operation_id": "private-op",
+        "injected_fault": "hidden fault",
+        "expected_root_cause": "hidden answer",
+        "unknown": {"secret": "private metadata"},
+    })
+    payload = build_agent_input(incident)
+    assert payload == build_agent_input(incident_data())
+    client = fake_client(json.dumps(report_data()))
+    analyze_incident(incident, client, "my-agent")
+    outgoing = client.responses.create.call_args.kwargs["input"]
+    assert json.loads(outgoing) == payload
+    for excluded in ("private-op", "hidden fault", "hidden answer", "private metadata"):
+        assert excluded not in outgoing
+
+
+@pytest.mark.parametrize("section", ["request", "dependency", "window_summary"])
+@pytest.mark.parametrize("label", ["operation_id", "injected_fault", "expected_root_cause", "unknown"])
+def test_nested_metadata_cannot_be_report_evidence(section, label):
+    incident = incident_data()
+    incident[section][label] = "hidden answer"
+    report = RCAReport(**report_data(evidence=[f'{section}.{label}="hidden answer"']))
+    with pytest.raises(ValueError, match="evidence"):
+        validate_report(incident, report)
+
+
+def test_container_values_cannot_smuggle_metadata_through_scalar_fields():
+    incident = incident_data()
+    incident["timestamp"] = {"operation_id": "private-op"}
+    incident["request"]["duration_ms"] = {"expected_root_cause": "hidden answer"}
+    incident["dependency"]["duration_ms"] = ["hidden fault"]
+    payload = build_agent_input(incident)
+    assert "timestamp" not in payload
+    assert "duration_ms" not in payload["request"]
+    assert "duration_ms" not in payload["dependency"]
+    report = RCAReport(**report_data(evidence=['request.duration_ms.expected_root_cause="hidden answer"']))
+    with pytest.raises(ValueError, match="evidence"):
+        validate_report(incident, report)
+
+
 @pytest.mark.parametrize("token", ["HTTP 504", "request.status_code=500", "operation_id=op-1",
                                    "dependency.success=True", "unknown=private metadata"])
 def test_unsupported_evidence_tokens_rejected(token):
