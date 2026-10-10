@@ -9,6 +9,71 @@ The FastAPI service can also send prompts to a Foundry model through `/ask`.
 Tests and offline evaluation run without model calls. Live model evaluation and
 Azure deployment are manual so usage stays under your control.
 
+## Results
+
+### Foundry RCA agent v2
+
+| Measure | Result |
+| --- | ---: |
+| Diagnosis accuracy | 18/18 (100%) |
+| Correct abstentions | 6/6 (100%) |
+| Evidence claims grounded in telemetry | 153/153 (100%) |
+| Schema validity | 24/24 (100%) |
+| False diagnoses on insufficient evidence | 0/6 |
+| Validator rejections | 0/24 |
+
+These are results on the existing 24-case benchmark. The cases are familiar
+development examples, so these scores do not establish performance on new
+incidents or production reliability.
+
+## Project status
+
+| Component | Current state |
+| --- | --- |
+| FastAPI and Foundry | The API is deployed to Azure Container Apps. The `gpt-5-mini` model connection is verified. |
+| Azure telemetry | OpenTelemetry requests and dependencies are verified in Application Insights. |
+| Prometheus and Grafana | Run locally for development and dashboarding. |
+| Incident ETL and RCA | KQL and Pandas ETL runs locally. The managed Foundry RCA agent analyzes the selected incident. |
+| Automated checks | 93 tests and the offline RCA gate pass locally. |
+| GitHub-hosted CI | The workflow is in the repository but disabled. |
+| LLM judge | Implemented, not run. |
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Azure[Azure]
+    API[FastAPI on Container Apps]
+    Model[Foundry model: gpt-5-mini]
+    Monitor[Application Insights and Log Analytics]
+    Agent[Managed Foundry RCA agent v2]
+    API --> Model
+    API -->|OpenTelemetry traces| Monitor
+    Agent --> Model
+  end
+
+  subgraph Local[Local development and analysis]
+    DevAPI[FastAPI local: simulator and metrics]
+    Prom[Prometheus]
+    Grafana[Grafana]
+    ETL[KQL and Pandas ETL]
+    Incident[Sanitized incident JSON]
+    Report[Validated RCA report]
+    Dataset[24-case labeled dataset]
+    Scorer[Offline evaluator]
+    DevAPI -->|/metrics| Prom --> Grafana
+    ETL -->|KQL query| Monitor
+    Monitor -->|request and dependency data| ETL
+    ETL --> Incident --> Agent --> Report --> Scorer
+    Dataset --> Scorer
+  end
+```
+
+The Azure service sends traces to Application Insights. Prometheus and Grafana
+monitor the local development service. The local ETL queries Azure Monitor,
+prepares a sanitized incident record, and sends the approved telemetry to the
+managed RCA agent. The offline evaluator scores reports against labeled cases.
+
 ## Local development
 
 For local development, set `APP_ENV=development` and
@@ -33,15 +98,13 @@ a value with at least 32 characters, then send it to `/ask` in the
 `X-API-Key` header. Production keeps `/health` available and disables `/docs`,
 `/redoc`, `/openapi.json`, `/metrics`, and `/simulate`.
 
-For Azure Container Apps, set `APP_ENV=production` and
-`ENABLE_SIMULATION=false`. Add `FOUNDRY_ENDPOINT`, `FOUNDRY_MODEL`,
+The API is deployed to Azure Container Apps with external HTTPS ingress on
+port 8000, 0.25 vCPU, 0.5 GiB of memory, zero minimum replicas, and one maximum
+replica. For a redeploy, set `APP_ENV=production` and
+`ENABLE_SIMULATION=false`. Provide `FOUNDRY_ENDPOINT`, `FOUNDRY_MODEL`,
 `FOUNDRY_API_KEY`, `AIOPS_API_KEY`, and
 `APPLICATIONINSIGHTS_CONNECTION_STRING` through Container Apps configuration
 and secrets. Do not upload `.env` or put credentials in the Docker image.
-
-The planned starter setup uses the Consumption plan, zero minimum replicas, one
-maximum replica, 0.25 vCPU, 0.5 GiB of memory, port 8000, and HTTPS ingress.
-Set a budget and alert before creating Azure resources.
 
 ## Local Foundry root cause analysis
 
