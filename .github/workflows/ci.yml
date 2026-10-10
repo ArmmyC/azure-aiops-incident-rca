@@ -1,0 +1,55 @@
+name: AIOps CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test, evaluate, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: development
+      ENABLE_SIMULATION: "true"
+      APPLICATIONINSIGHTS_CONNECTION_STRING: "InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://localhost"
+      FOUNDRY_ENDPOINT: https://example.invalid/openai/v1/
+      FOUNDRY_API_KEY: ci-only-not-a-credential
+      FOUNDRY_MODEL: gpt-5-mini
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.24"
+
+      - name: Install locked dependencies
+        run: uv sync --locked --no-install-project --group dev --group etl --group rca
+
+      - name: Check Python compilation
+        run: uv run --no-sync python -m compileall -q app.py telemetry.py etl rca evaluation tests
+
+      - name: Run automated tests
+        run: uv run --no-sync python -m pytest -q
+
+      - name: Offline RCA regression gate
+        run: uv run --no-sync python -m evaluation.ci_gate
+
+      - name: Build Docker image
+        run: docker build -t aiops-fastapi:ci .

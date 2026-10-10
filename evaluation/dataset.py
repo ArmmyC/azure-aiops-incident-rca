@@ -67,8 +67,10 @@ def _validate_case(case: object, line_number: int) -> dict[str, Any]:
     return case
 
 
-def load_dataset(path: str | Path = DATASET_PATH) -> list[dict[str, Any]]:
-    """Read exactly 24 uniquely labeled cases with six examples per category."""
+def load_dataset(
+    path: str | Path = DATASET_PATH, *, require_full_benchmark: bool = True
+) -> list[dict[str, Any]]:
+    """Read unique labeled cases, enforcing the 24-case benchmark by default."""
     dataset_path = Path(path)
     cases: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -90,11 +92,12 @@ def load_dataset(path: str | Path = DATASET_PATH) -> list[dict[str, Any]]:
         seen_ids.add(case["id"])
         cases.append(case)
 
-    counts = {category: 0 for category in CATEGORY_LABELS}
-    for case in cases:
-        counts[case["expected"]["root_cause_category"]] += 1
-    if len(cases) != TOTAL_CASES or any(
-        count != CASES_PER_CATEGORY for count in counts.values()
-    ):
-        raise ValueError("Dataset must contain exactly 24 cases with six per category.")
+    if require_full_benchmark:
+        counts = {category: 0 for category in CATEGORY_LABELS}
+        for case in cases:
+            counts[case["expected"]["root_cause_category"]] += 1
+        if len(cases) != TOTAL_CASES or any(
+            count != CASES_PER_CATEGORY for count in counts.values()
+        ):
+            raise ValueError("Dataset must contain exactly 24 cases with six per category.")
     return cases

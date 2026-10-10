@@ -110,6 +110,21 @@ def test_dataset_rejects_duplicate_ids_and_invalid_category(tmp_path):
         load_dataset(path)
 
 
+def test_dataset_loader_can_validate_a_small_ci_subset_without_full_balance(tmp_path):
+    timeout = timeout_incident()
+    timeout.pop("operation_id")
+    cases = [
+        make_case("timeout-ci", timeout, "diagnosed", "dependency_timeout"),
+        make_case("abstain-ci", {"request": {"status_code": 404}}, "insufficient_evidence", None),
+    ]
+    path = tmp_path / "ci.jsonl"
+    path.write_text("".join(json.dumps(case) + "\n" for case in cases), encoding="utf-8")
+
+    assert load_dataset(path, require_full_benchmark=False) == cases
+    with pytest.raises(ValueError, match="exactly 24"):
+        load_dataset(path)
+
+
 def test_v2_report_requires_category_for_diagnosis_and_null_for_abstention():
     with pytest.raises(ValidationError):
         RCAReport.model_validate({

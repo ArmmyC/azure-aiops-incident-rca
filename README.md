@@ -97,8 +97,8 @@ separately invoked judge, never by the RCA prediction request.
 
 Version 2 adds `root_cause_category` while version 1 keeps its original
 response contract. Check the managed agent's version list before creating
-version 2; `rca.create_agent` creates another version every time it runs.
-After confirming version 1 is the only version, create version 2 once:
+version 2. `rca.create_agent` creates version 2 only when version 1 is the
+sole existing version; it stops if the remote agent already has another version.
 
 ```powershell
 uv run --group rca python -m rca.create_agent
@@ -158,3 +158,23 @@ valid-diagnosis coverage, abstention recall, false-diagnosis rate, schema
 validity, evidence grounding, and validator rejections, with the numerator and
 denominator for each metric. The 24-case dataset is an engineering benchmark,
 not a statistical reliability guarantee.
+
+## GitHub Actions CI
+
+The CI workflow runs the test suite, compiles the Python modules, scores an
+offline RCA fixture, and builds the Docker image. It uses the locked `uv`
+dependencies and test-only placeholder environment values; it needs no Azure
+credentials and makes no Foundry calls. The eight-case fixture in
+`evaluation/fixtures/` contains synthetic incidents and parsed v2 reports from
+the prior evaluation; raw model text and operational IDs are excluded. It
+exercises the scorer and regression gate, not live model behavior or
+generalization. The separate 24-case dataset remains available for local
+evaluation.
+
+Run the same offline gate locally:
+
+```powershell
+uv run --group dev --group etl --group rca python -m evaluation.ci_gate
+```
+
+Azure deployment and live Foundry evaluation remain manual operations.
