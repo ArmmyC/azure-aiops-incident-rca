@@ -26,3 +26,7 @@ etl = [
     "azure-monitor-query>=2.0.0",
     "pandas>=3.0.6",
 ]
+rca = [
+    "azure-ai-projects>=2.3.0",
+    "azure-identity>=1.26.0",
+]
