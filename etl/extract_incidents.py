@@ -1,10 +1,12 @@
 """Extract incident evidence from a bounded Azure Monitor workspace query."""
 
+import argparse
 import json
 import math
 import os
 import sys
 import uuid
+from collections.abc import Sequence
 from datetime import timedelta
 from pathlib import Path
 
@@ -63,9 +65,11 @@ def _number_or_none(value: object) -> float | None:
 
 
 def build_incident_report(
-    requests: pd.DataFrame, dependencies: pd.DataFrame
+    requests: pd.DataFrame,
+    dependencies: pd.DataFrame,
+    operation_id: str | None = None,
 ) -> dict[str, object] | None:
-    """Select the newest failed request and its longest matching dependency."""
+    """Select a failed request, or a specific operation, and its longest dependency."""
     request_rows = requests.copy()
     dependency_rows = dependencies.copy()
     request_rows["TimeGenerated"] = pd.to_datetime(
@@ -84,10 +88,16 @@ def build_incident_report(
     total_requests = _number_or_none(request_rows["ItemCount"].sum())
     failed_requests = _number_or_none(request_rows.loc[failed, "ItemCount"].sum())
     p95_latency_ms = _number_or_none(request_rows["DurationMs"].dropna().quantile(0.95))
-    if not failed.any():
+    if operation_id is None and not failed.any():
         return None
 
     request_rows["OperationId"] = request_rows["OperationId"].astype("string")
+    if operation_id is not None:
+        request_rows = request_rows.loc[
+            request_rows["OperationId"].eq(str(operation_id))
+        ].copy()
+        if request_rows.empty:
+            return None
     dependency_rows = dependency_rows.dropna(subset=["OperationId"])
     dependency_rows["OperationId"] = dependency_rows["OperationId"].astype("string")
     dependency_rows["TimeGenerated"] = pd.to_datetime(
@@ -108,7 +118,10 @@ def build_incident_report(
         "Success": "dependency_success",
     })
     joined = request_rows.merge(dependency_rows, on="OperationId", how="left")
-    incident = joined.loc[joined["request_success"].eq(False)].sort_values(
+    candidates = joined
+    if operation_id is None:
+        candidates = joined.loc[joined["request_success"].eq(False)]
+    incident = candidates.sort_values(
         ["request_timestamp", "dependency_duration_ms"], na_position="first"
     ).iloc[-1]
 
@@ -139,8 +152,11 @@ def build_incident_report(
     }
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Query the configured workspace and atomically write incident evidence."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--operation-id", help="Select the exact /simulate operation ID.")
+    args = parser.parse_args(argv)
     credential = None
     client = None
     try:
@@ -155,12 +171,16 @@ def main() -> int:
         client = LogsQueryClient(credential)
         requests = load_query_frame(client, workspace_id, REQUEST_QUERY)
         dependencies = load_query_frame(client, workspace_id, DEPENDENCY_QUERY)
-        report = build_incident_report(requests, dependencies)
+        report = build_incident_report(
+            requests, dependencies, operation_id=args.operation_id
+        )
         if report is None:
-            print(
-                "No failed /simulate requests found in the last 48 hours; no report was written.",
-                file=sys.stderr,
+            message = (
+                f"No matching /simulate request for operation ID {args.operation_id!r}; no report was written."
+                if args.operation_id is not None
+                else "No failed /simulate requests found in the last 48 hours; no report was written."
             )
+            print(message, file=sys.stderr)
             return 1
 
         serialized = json.dumps(report, indent=2, allow_nan=False)
