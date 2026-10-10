@@ -21,3 +21,8 @@ dev = [
     "httpx>=0.28.1",
     "pytest>=9.1.1",
 ]
+etl = [
+    "azure-identity>=1.26.0",
+    "azure-monitor-query>=2.0.0",
+    "pandas>=3.0.6",
+]
