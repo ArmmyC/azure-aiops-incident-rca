@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+openai
+python-dotenv
+prometheus-client
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation-fastapi
+azure-monitor-opentelemetry
