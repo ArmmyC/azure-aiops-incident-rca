@@ -45,6 +45,7 @@ FOUNDRY_PROJECT_ENDPOINT=https://<resource>.services.ai.azure.com/api/projects/<
 FOUNDRY_AGENT_NAME=aiops-rca-agent
 FOUNDRY_MODEL=gpt-5-mini
 LOG_ANALYTICS_WORKSPACE_ID=<workspace-guid>
+FOUNDRY_AGENT_VERSION=2
 ```
 
 `FOUNDRY_PROJECT_ENDPOINT` identifies the Foundry project for agent management
@@ -83,3 +84,77 @@ tokens with JSON scalar values, such as `dependency.success=false` and
 are rejected. A 404 with no named dependency must yield `insufficient_evidence`
 and a null root cause. Confidence is qualitative. Recommended checks are
 investigation steps; this workflow does not execute remediation.
+
+## Local RCA evaluation
+
+The evaluation dataset has 24 labeled cases: six dependency timeouts, six
+application exceptions with exception-type evidence, six dependency-latency
+regressions with baselines, and six insufficient-evidence cases. It includes
+sanitized telemetry from the real 404 and 504 incidents; operation IDs are
+kept out of the tracked dataset. Only the incident telemetry whitelist is sent
+to the RCA agent. Expected labels are used by the offline scorer and the
+separately invoked judge, never by the RCA prediction request.
+
+Version 2 adds `root_cause_category` while version 1 keeps its original
+response contract. Check the managed agent's version list before creating
+version 2; `rca.create_agent` creates another version every time it runs.
+After confirming version 1 is the only version, create version 2 once:
+
+```powershell
+uv run --group rca python -m rca.create_agent
+```
+
+Start with the real 504 and 404 cases. The generator pins the requested agent
+version and caches each response by case ID and version:
+
+```powershell
+uv run --group rca python -m evaluation.generate_predictions `
+  --agent-version 2 `
+  --case-id timeout-001 `
+  --case-id abstain-001
+```
+
+Then run a five-case pilot that covers all four categories. The two real cases
+are reused from cache:
+
+```powershell
+uv run --group rca python -m evaluation.generate_predictions `
+  --agent-version 2 `
+  --case-id timeout-001 `
+  --case-id abstain-001 `
+  --case-id exception-001 `
+  --case-id latency-001 `
+  --case-id abstain-002
+uv run --group rca python -m evaluation.score_predictions `
+  --agent-version 2 `
+  --case-id timeout-001 `
+  --case-id abstain-001 `
+  --case-id exception-001 `
+  --case-id latency-001 `
+  --case-id abstain-002
+```
+
+After inspecting the pilot, `--all` generates any remaining predictions once.
+Scoring is local and can be repeated without model calls:
+
+```powershell
+uv run --group rca python -m evaluation.generate_predictions --agent-version 2 --all
+uv run --group rca python -m evaluation.score_predictions --agent-version 2
+```
+
+To request an LLM-as-a-Judge assessment, invoke its one-case command explicitly.
+That is a separate Foundry model call and may incur usage charges:
+
+```powershell
+uv run --group rca python -m evaluation.judge --case-id timeout-001 --agent-version 2
+```
+
+Judge scores are not ground truth. Manually review cases where the judge and
+deterministic category scorer disagree.
+
+Predictions, judge results, reports, and full local Azure fixtures are stored
+under ignored `data/evaluations/`. The scorer reports category accuracy,
+valid-diagnosis coverage, abstention recall, false-diagnosis rate, schema
+validity, evidence grounding, and validator rejections, with the numerator and
+denominator for each metric. The 24-case dataset is an engineering benchmark,
+not a statistical reliability guarantee.
