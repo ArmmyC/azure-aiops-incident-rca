@@ -74,6 +74,14 @@ monitor the local development service. The local ETL queries Azure Monitor,
 prepares a sanitized incident record, and sends the approved telemetry to the
 managed RCA agent. The offline evaluator scores reports against labeled cases.
 
+## Application Insights incident trace
+
+This query joins simulated HTTP requests to their dependency spans by
+`operation_Id`. The results show `POST /simulate` requests that returned `504`
+alongside failed `search_service` dependencies.
+
+![Application Insights KQL query correlating simulated request failures with dependency telemetry](docs/images/app-insights-simulate-correlation.png)
+
 ## Local development
 
 For local development, set `APP_ENV=development` and
