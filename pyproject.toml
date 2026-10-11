@@ -1,7 +1,7 @@
 [project]
 name = "foundrylearning"
 version = "0.1.0"
-description = "Add your description here"
+description = "An Azure AIOps project that traces API incidents and generates evidence-grounded root-cause analyses."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

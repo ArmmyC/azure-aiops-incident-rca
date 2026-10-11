@@ -1,0 +1,20 @@
+{
+  "status": "diagnosed",
+  "root_cause_category": "dependency_timeout",
+  "root_cause": "Timeout of downstream dependency search_service correlated with request HTTP 504 (dependency.success=false). Underlying infrastructure cause is uncertain.",
+  "confidence": "high",
+  "evidence": [
+    "request.status_code=504",
+    "request.duration_ms=1007.0",
+    "dependency.name=\"search_service\"",
+    "dependency.duration_ms=1004.0",
+    "dependency.success=false"
+  ],
+  "recommended_checks": [
+    "Inspect search_service logs for the time window around the request to identify timeouts or internal errors.",
+    "Check network/gateway logs and metrics between the application and search_service for connectivity issues or packet drops.",
+    "Review search_service resource utilization (CPU, memory, thread pools) and recent deployments or configuration changes.",
+    "Correlate distributed traces/spans for the request to see where time was spent and whether retries or queueing occurred.",
+    "Check monitoring/alerts for elevated latency or error rates on search_service and any concurrent incidents or scaling events."
+  ]
+}

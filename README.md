@@ -30,7 +30,7 @@ incidents or production reliability.
 
 | Component | Current state |
 | --- | --- |
-| FastAPI and Foundry | The API is deployed to Azure Container Apps. The `gpt-5-mini` model connection is verified. |
+| FastAPI and Foundry | Deployed on Azure Container Apps. [Open the health endpoint](https://aiops-fastapi.agreeableriver-377d9036.southeastasia.azurecontainerapps.io/health). `/ask` requires an `X-API-Key`; the `gpt-5-mini` model connection is verified. |
 | Azure telemetry | OpenTelemetry requests and dependencies are verified in Application Insights. |
 | Prometheus and Grafana | Run locally for development and dashboarding. |
 | Incident ETL and RCA | KQL and Pandas ETL runs locally. The managed Foundry RCA agent analyzes the selected incident. |
@@ -81,6 +81,31 @@ This query joins simulated HTTP requests to their dependency spans by
 alongside failed `search_service` dependencies.
 
 ![Application Insights KQL query correlating simulated request failures with dependency telemetry](docs/images/app-insights-simulate-correlation.png)
+
+## Sanitized RCA agent result
+
+This cached v2 timeout-case result is a sanitized example from the local
+evaluation. It omits case and operation IDs and does not represent a fresh
+model call.
+
+```json
+{
+  "status": "diagnosed",
+  "root_cause_category": "dependency_timeout",
+  "root_cause": "Timeout of downstream dependency search_service correlated with request HTTP 504 (dependency.success=false). Underlying infrastructure cause is uncertain.",
+  "confidence": "high",
+  "evidence": [
+    "request.status_code=504",
+    "request.duration_ms=1007.0",
+    "dependency.name=\"search_service\"",
+    "dependency.duration_ms=1004.0",
+    "dependency.success=false"
+  ]
+}
+```
+
+The [full sanitized result](docs/examples/rca-timeout-v2.json) also includes
+recommended investigation checks.
 
 ## Local development
 
@@ -150,11 +175,19 @@ The extractor writes `data/incidents/latest.json`. If the requested operation
 ID is missing, it leaves the existing file untouched. `--env-file .env` loads
 `LOG_ANALYTICS_WORKSPACE_ID` from your local configuration.
 
-To create agent version 2 from the preserved version 1, run the creator once.
-Then analyze the current local artifact:
+For normal analysis, reuse the existing managed agent. If version 2 is already
+provisioned, skip agent creation and analyze the current artifact directly. Run
+the creator once only when version 1 is the sole existing version and version 2
+still needs to be provisioned:
 
 ```powershell
 uv run --group rca python -m rca.create_agent
+```
+
+Then analyze the current local artifact. This calls the existing agent and does
+not create a new version:
+
+```powershell
 uv run --group rca python -m rca.analyze
 ```
 
@@ -180,9 +213,9 @@ Expected labels are used for local scoring and the separately run judge. They
 are not included in prediction requests.
 
 Version 2 adds `root_cause_category` while version 1 keeps its original
-response format. Before creating version 2, check the managed agent's version
-list. `rca.create_agent` proceeds only when version 1 is the sole existing
-version.
+response format. Reuse version 2 for evaluation and incident analysis. Create
+it only when the managed project contains version 1 alone; `rca.create_agent`
+checks the version list and stops in other states.
 
 ```powershell
 uv run --group rca python -m rca.create_agent
